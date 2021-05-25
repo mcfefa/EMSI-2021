@@ -1,0 +1,135 @@
+---
+title: "Stochastic models"
+author: "Cristina Lanzas"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Stochastic models in R
+
+Many events in life, including disease outbreaks, appear to occur by chance. If an outbreak was to be repeated, we would not observe the same number of animals becoming infected at exactly the same times.  Models that include chance events are called stochastic models. There are two sources of stochasticity (or randomness): demographic and environmental. 
+        Demographic stochasticity results from the probabilistic nature of individual processes such as birth, death, transmission, recovery… Actual births (or any other process) of single individuals are like realizations of a Bernoulli trial, the outcome is random and can be either success or failure. At the population level, the outcome of a group of individuals with the same event probability has a binomial distribution. Large populations suffer less demographic stochasticity than small populations.  When populations are small (such as farms, hospital wards, and households) or the number of infected individuals is low (i.e., during the early phases of an outbreak or when the outbreak is dying out), demographic stochasticity can have a great influence. Most of the modeling approaches to introduce stochasticity in infectious disease models are event-driven to account for demographic stochasticity. 
+        Environmental stochasticity comes from sources external to the population and can change the probability of the events. Large and small populations are equally affected. For example, cold winters can favor the survival of viruses such as influenza, increasing their transmission rate. Variation on factors such as temperature and humidity can influence diseases dynamics across time and space. 
+
+
+###  Gillespie's algorithm
+
+The most popular event-driven approach to implement demographic stochasticity is the Gillespie’s direct algorithm. A code implement the Gillespie’s direct algorithm has the following steps: 
+1. Label all the events
+2. For each event determine the rate at which occurs
+3. Determine the overall rate at which any event occurs (sum of all the rates)
+4. Obtain the time until the next event by sampling the waiting time distribution, which follows an exponential distribution with mean equal to the overall rate
+5. Generate a random number to select what event takes place
+6. Update time and system states 
+7. Return to step 2 
+
+In deterministic models, the quantities in each compartment are changed by the flow rates going in and out of the compartments, and compartments are continuous variables (i.e., I compartment can have 0.9 or 1.1 infectious individuals). In event-driven stochastic models, the compartments quantities are updated through events, and can have only integer values. First we need to “translate” deterministic rates into events. Each flow rate (i.e, transmission and recovery) becomes an event with an associated transition. For example, the event “transmission” moves one individual from the compartment S to the compartment I. 
+
+The following function iterates the Gillespie’s algorithm:
+```{r}
+gillesp <- function(start,ratefun,trans,pars,times=0:20) {
+t0 <- times[1]                 ## set time to starting time
+ntimes <- length(times) 
+X <- start                     ## set state to starting state
+res <- matrix(nrow=length(times),ncol=length(start),dimnames=list(times,names(start))) 
+## matrix for results
+for (ctr in 1:(ntimes-1)) {     ## loop over reporting times
+res[ctr,] <- X                ## record current state
+while (t0<times[ctr+1]) {
+ rates <- ratefun(X,pars,t0) ## calculate current rates
+ if (all(rates==0)) break    ## extinction
+ totrate <- sum(rates)       
+ elapsed <- rexp(1,totrate)  ## sample elapsed time
+ which.trans <- sample(1:nrow(trans),size=1,prob=rates) ## pick transition
+ t0 <- t0+elapsed            ## update time
+ X <- X+trans[which.trans,]  ## add transition values to current state
+    }  }
+  cbind(times,res)
+}
+```
+
+We will simulate first a simple SIR model with disease-induced death and no demographics. First, you may want to set the random-number seed so that results are reproducible every time you run the code (you can really use any integer you want here). For example: 
+```{r}
+set.seed(2789)
+```
+To simulate the stochastic model with the above function we need to provide the following arguments: 
+* start: starting values 
+
+```{r}
+start=c(S=100,I=1,R=0)
+```
+
+* ratefun: a function of the current state variables, parameters, and time that returns a numeric vector of the rates at which each kind of event is occurring
+```{r}
+ratefun.SIR = function(X,pars,time)  {
+  		vals = c(as.list(pars),as.list(X))   ## attach state and pars as lists
+ 		 rates = with(vals,                ##allows reference to states and parameters by name 
+                           c(infection=beta*S*I, death=alpha*I, recovery=gamma*I))
+                           }
+ 
+```
+
+* A matrix indicating the changes in each state variable (column) that occur when a particular event (row) takes place
+```{r}
+statenames.SIR = c("S","I","R")       
+transnames.SIR = c("infection","death","recovery")
+
+trans.SIR = matrix(c(-1,1,0,0,-1,0, 0,-1,1),
+                    byrow=TRUE,        ## default is by column
+                    ncol=3,            ## number of columns = number of state variables
+                    dimnames=list(transnames.SIR,statenames.SIR))
+
+
+
+```
+
+* A (named) numeric vector of parameters
+
+```{r}
+
+pars.SIR= c(beta=0.1,alpha=1,gamma=1)
+```
+
+* A vector of times at which to report output
+```{r}
+times= seq(0, 5, by = 0.05)
+```
+
+We need to simulate the model multiple times (in silico experiment), we can accomplish this with the function replicate:
+```{r}
+G.SIR.mult= replicate(100, gillesp(start = c(S = 100, I = 3, R = 0), times = seq(0, 5, by = 0.05),
+        ratefun = ratefun.SIR, trans = trans.SIR, pars = pars.SIR)[, "I"])
+```
+We add [,"I"] to save just the number of infectious individuals. 
+
+To plot the stochastic trajectories and the mean value we use the following commands (matplot plots the columns of a matrix):
+
+```{r}
+matplot(times,G.SIR.mult,type="l",col="gray",lty=1, xlab="Time", ylab="Number infectious")
+lines(times,rowMeans(G.SIR.mult),lwd=2)
+```
+
+
+### Exercise
+
+Extinction of an infectious pathogen in any finite local host population is certain. Most diseases persist in small populations thanks to frequent imports of infection. Some pathogens have different mechanisms to persist in small populations. Herpesviruses (e.g. bovine herpesvirus type 1, varicella-zoster virus) possess properties that enable them to survive in small host populations for a long time. Once individuals are infected with a herpesvirus they remain carriers of the virus for life and, under certain stress conditions, the virus can reactivate and the carrier hosts become infectious again. Bovine hervesvirus 1 has been shown to persist for very long time in small cattle herds. The following deterministic ODE model describes the epidemiology of a herpesvirus in a cattle herd. 
+![Equations](equations.png) 
+
+Where S is the number of susceptible animals, I is the number of infectious individuals, and C is the number of carriers. 
+
+![Parameter description](table.png) 
+
+ 
+ List the events, and associated transitions and rates of the stochastic model (note: you can treat death and removal of infectious individuals as a single event)
+
+
+Write a script to simulate the stochastic model.  Use the following initial conditions: start=c(S=100,I=1,C=0)  and report the output in the following times: times=seq(0, 50, 1)
+
+Describe the results of the model simulations. The value of parameter alpha is high to capture an efficient removal of the infectious individuals out of the farm once they are identified as infectious. Simulate the model with an alpha value of 1. What is the impact of the removal of infectious individuals on the persistence of the disease? 
+
+Evaluate the effect of the reactivation rate on disease persistence. What happen when you increase the rate (e.g. 0.5)? Explain.   

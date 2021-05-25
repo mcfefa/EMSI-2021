@@ -1,0 +1,106 @@
+---
+title: "Solving ordinary differential equations in R"
+author: "Cristina Lanzas"
+output:
+  html_document:
+    df_print: paged
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+To solve differential equations (ODEs) numerically in R, you need to download the package deSolve. 
+
+```{r}
+library(deSolve)
+?deSolve
+```
+
+If you type ?deSolve, R will open a web page with information about the package capabilities. deSolve has several functions to solve ODEs (e.g. lsoda, rk4). lsoda is going to be our first choice. 
+Given a model, parameter values and initial conditions, lsoda( ) will return a list that includes the time steps in column 1 and the values of the state variables in the other columns.
+
+The syntax for lsoda is:
+
+lsoda(x0, times, function_name, parms, rtol, atol)
+
+Where the arguments are:
+
+* x0 is a vector containing the initial values of the state variables
+* times is a vector containing a sequence of time steps
+* function_name is the name of the function containing the differential equations 
+* parms is a vector containing the parameter values
+* rtol relative tolerance
+* atol absolute tolerance 
+* rtol and atol can be used to control the accuracy, if not indicate, lsoda uses default values. 
+
+Our first task is to write the function that contains the model. The function that contains the differential equations needs to be written in the specific way that the ODE solver recognizes. The skeleton of the function is as follows:
+
+function = function_name(t, y, parms){
+some code for the differential equations goes here
+return(list(dY))
+}
+
+As example, let’s built the function for the epidemic SIR model. The function must have (t, y, parms) as inputs. First we assign values of y to state variables (S=y[1]; I=y[2]; R=y[3];). This order must be maintained when the initial conditions (x0) are specified later. Then the differential equations are listed. Finally the function returns a list of the left-hand side of the differential equations. 
+
+
+```{r}
+
+sir.epidemic = function(t,y,parms){
+with(as.list(c(parms)),
+     {        
+        S=y[1]; I=y[2]; R=y[3];
+        ds=-beta*I*S;
+        di=beta*I*S-gamma*I;
+        dr=gamma*I;
+        dY=c(ds,di,dr);
+        return(list(dY));
+})
+}
+
+```
+
+As a next step, three vectors have to be defined: the times vector for which an output value is requested,  the parameter vector (parms), and the start values of the state variables (x0) where the names within the vectors correspond to the names used within the model function.
+
+```{r}
+
+times=seq(0, 200, 0.1)
+
+parms=c(beta=0.005, gamma=0.1)
+
+x0=c(S=100, I=1, R=0)
+```
+
+Now the simulation can be run using either lsoda:
+
+```{r}
+out = as.data.frame ( lsoda(x0, times, sir.epidemic, parms))
+```
+
+Finally we can plot the simulation results as time series:
+
+```{r}
+plot (times, out$S, type="l", xlab="time", ylab="number", col="green")
+lines (times, out$I, type="l", col="red")
+lines (times, out$R, type="l", col="blue")
+legend (100, 80, c("S", "I","R"),lty=c( 2, 2, 2), col=c("green","red", "blue"))
+```
+
+**Exercises**
+
+1) Write a script using lsoda to solve the endemic SIR model (assuming constant population). 
+For parameter values use u=1/60, gamma=2 (corresponding to a mean lifetime of 60 years, and disease duration of 1/2 of a year), and beta=0.01 and population size S(0)+I(0)+R(0)=1000. Start the simulations with 1 infectious individual, and 0 recovery individuals. Explore how infected individuals change with changes in beta. Plot the number of infectious individuals for three different beta values in the same plot.
+
+
+
+2) Syphilis, gonorrhoea, and chlamydiosis are sexually transmitted diseases. The natural history of sexually transmitted diseases is as follows:
+ * Individuals are susceptible until become infected through sexual contact with an infected individual.
+ * Infection does not confer immunity. Recovery from infection generally occurs only following medical treatment.
+ * After medical treatment, the individuals become susceptible again.
+ * Transmission of sexually transmitted diseases is often considered frequency-dependent.
+ 
+ Write the differential equations for an epidemiological model of sexually transmitted diseases (Assume that the latent period can be omitted and the population is closed, no births or deaths). Write a script to solve the model. For parameter values, use 0.0001 for the transmission rate,beta and 0.033 for the recovery rate, gamma. Assume a population of 100,000. Plot the number of susceptible and infectious vs time. Describe the prevalence pattern you observe. 
+ 
+ 
+
+
+
