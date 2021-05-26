@@ -1,6 +1,6 @@
 ## following along with: Stochastic models in R.Rmd
 
-## Gillepsie Algorithm
+## Gillespie Algorithm
 gillesp <- function(start,ratefun,trans,pars,times=0:20) {
   t0 <- times[1]                 ## set time to starting time
   ntimes <- length(times) 
